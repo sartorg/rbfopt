@@ -259,7 +259,7 @@ class RbfSettings:
     _allowed_rbf = {'auto', 'cubic', 'thin_plate_spline', 'linear',
                    'multiquadric'}
     _allowed_init_strategy = {'all_corners', 'lower_corners', 'rand_corners',
-                             'lhd_maximin', 'lhd_corr'}
+                             'lhd_maximin', 'lhd_corr', 'quasilhd'}
     _allowed_function_scaling = {'off', 'affine', 'log', 'auto'}
     _allowed_domain_scaling = {'off', 'affine', 'auto'}
     _allowed_dynamism_clipping = {'off', 'median', 'clip_at_dyn', 'auto'}

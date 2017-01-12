@@ -15,6 +15,7 @@ from __future__ import absolute_import
 
 import sys
 import math
+import quasilhd
 import itertools
 import numpy as np
 import scipy.spatial as ss
@@ -385,6 +386,47 @@ def get_lhd_corr_points(var_lower, var_upper, num_trials = 50):
 
 # -- end function
 
+def get_quasilhd_points(var_lower, var_upper, integer_vars):
+    """Compute a (approximated) latin hypercube design taking
+    into account the problem constraints.
+
+    Compute a list of (n+1) points in the given box subject to
+    some constraints, where n is the dimension of the space.
+    This function relies on the module QuasiLHD.
+
+    Parameters
+    ----------
+    var_lower : 1D numpy.ndarray[float]
+        List of lower bounds of the variables.
+
+    var_upper : 1D numpy.ndarray[float]
+        List of upper bounds of the variables.
+
+    integer_vars : 1D numpy.ndarray[float]
+        List of indices of integer variables.
+
+    Returns
+    -------
+    2D numpy.ndarray[float]
+        List of points in the approximated latin hypercube design.
+    """
+
+    assert (isinstance(var_lower, np.ndarray))
+    assert (isinstance(var_upper, np.ndarray))
+    assert (isinstance(integer_vars, np.ndarray))
+    assert (len(var_lower) == len(var_upper))
+
+    n = len(var_lower)
+
+    node_pos = quasilhd.find_lhd(n+1, var_lower, var_upper,
+                                 [[1]*n, [-1]*n], [60, -2],
+                                 int_vars=integer_vars)
+
+    return node_pos
+
+# -- end function
+
+
 def initialize_nodes(settings, var_lower, var_upper, integer_vars):
     """Compute the initial sample points.
 
@@ -442,18 +484,23 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars):
             nodes = get_lhd_maximin_points(var_lower, var_upper)
         elif (settings.init_strategy == 'lhd_corr'):
             nodes = get_lhd_corr_points(var_lower, var_upper)
+        elif (settings.init_strategy == 'quasilhd'):
+            nodes = get_quasilhd_points(var_lower, var_upper,
+                                               integer_vars)
 
         if (integer_vars.size):
                 for i in integer_vars:
                     np.around(nodes[:,i],out=nodes[:,i])
 
         U, s, V = np.linalg.svd(nodes)
-        if (min(s) > settings.eps_zero):
+
+        if (np.min(s) > settings.eps_zero):
             dependent = False
 
     if (itercount == config.MAX_RANDOM_INIT):
         raise RuntimeError('Exceeded number of random initializations')
 
+    print('Quasi LHD found.')
     return nodes
 
 # -- end function
@@ -737,7 +784,7 @@ def get_rbf_matrix(settings, n, k, node_pos):
     Phi = Phi.reshape(-1)
     for i, v in enumerate(Phi):
         Phi[i] = rbf(v)
-    Phi = Phi.reshape(np.shape(node_pos)[0],-1)
+    Phi = Phi.reshape(node_pos.shape[0],-1)
 
     # Put together to obtain [Phi P; P^T 0].
     A = np.vstack((np.hstack((Phi, P)), np.hstack((PTr, np.zeros((p, p))))))

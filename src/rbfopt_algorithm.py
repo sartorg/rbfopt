@@ -1275,7 +1275,7 @@ class OptAlgorithm:
         # Store the current number of nodes
         self.num_nodes_at_restart = np.shape(self.all_node_pos)[0]
         # Compute a new set of starting points
-        node_pos = ru.initialize_nodes(self.l_settings, self.var_lower, 
+        node_pos = ru.initialize_nodes(self.l_settings, self.var_lower,
                                        self.var_upper, self.integer_vars)
         if (self.current_mode == 'accurate' or
             self.num_fast_restarts > self.l_settings.max_fast_restarts or
@@ -1408,7 +1408,7 @@ class OptAlgorithm:
                 try:
                     Amat = ru.get_rbf_matrix(self.l_settings, self.n, 
                                              len(self.node_pos) + 1,
-                                             self.node_pos + [next_p])
+                                             np.vstack((self.node_pos, next_p)))
                     Amatinv = ru.get_matrix_inverse(self.l_settings, Amat)
                     restoration_done = True
                 except np.linalg.LinAlgError:
