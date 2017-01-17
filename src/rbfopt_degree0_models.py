@@ -76,13 +76,13 @@ def create_min_rbf_model(settings, n, k, var_lower, var_upper,
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
 
-    assert(len(var_lower)==n)
-    assert(len(var_upper)==n)
-    assert(len(rbf_lambda)==k)
-    assert(len(rbf_h)==1)
-    assert(len(node_pos)==k)
+    assert(len(var_lower) == n)
+    assert(len(var_upper) == n)
+    assert(len(rbf_lambda) == k)
+    assert(len(rbf_h) == 1)
+    assert(len(node_pos) == k)
     assert(isinstance(settings, RbfSettings))
-    assert(ru.get_degree_polynomial(settings)==0)
+    assert(ru.get_degree_polynomial(settings) == 0)
 
     model = ConcreteModel()
     

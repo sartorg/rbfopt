@@ -43,7 +43,7 @@ class BlackBox:
 
         Returns
         -------
-        List[float]
+        1D numpy.ndarray[float]
             Lower bounds of the decision variables.
         """
         pass
@@ -55,7 +55,7 @@ class BlackBox:
 
         Returns
         -------
-        List[float]
+        1D numpy.ndarray[float]
             Upper bounds of the decision variables.
         """
         pass
@@ -66,12 +66,40 @@ class BlackBox:
         
         Returns
         -------
-        List[int]
+        1D numpy.ndarray[float]
             A list of indices of the variables that must assume
             integer values. Can be empty.
         """
         pass
     # -- end function
+
+    @abstractmethod
+    def get_constraints(self):
+        """Return the list of integer variables.
+
+        Returns
+        -------
+        2D numpy.ndarray[float]
+            The constraint matrix A in the system Ax <= b.
+
+        """
+        pass
+
+    # -- end function
+
+    @abstractmethod
+    def get_rhs(self):
+        """Return the list of integer variables.
+
+        Returns
+        -------
+        1D numpy.ndarray[float]
+            The rhs b in the system Ax <= b.
+
+        """
+        pass
+
+        # -- end function
 
     @abstractmethod
     def evaluate(self, x):
@@ -80,7 +108,7 @@ class BlackBox:
         
         Parameters
         ----------
-        x : List[float]
+        x : 1D numpy.ndarray[float]
             Value of the decision variables.
 
         Returns
@@ -103,7 +131,7 @@ class BlackBox:
 
         Parameters
         ----------
-        x : List[float]
+        x : 1D numpy.ndarray[float]
             Value of the decision variables.
 
         Returns

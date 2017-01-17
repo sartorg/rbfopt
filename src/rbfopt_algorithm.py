@@ -42,6 +42,8 @@ import rbfopt_bumpiness as rb
 from rbfopt_black_box import BlackBox
 from rbfopt_settings import RbfSettings
 
+#TODO: fix the handling of constraints A,b when there is domain scaling
+
 class OptAlgorithm:
     """Optimization algorithm.
 
@@ -210,6 +212,8 @@ class OptAlgorithm:
         var_lower = np.array(black_box.get_var_lower(), dtype=np.float_)
         var_upper = np.array(black_box.get_var_upper(), dtype=np.float_)
         integer_vars = np.array(black_box.get_integer_vars(), dtype=np.int_)
+        A = black_box.get_constraints()
+        b = black_box.get_rhs()
         # Check for fixed variables
         fixed_vars = np.isclose(var_lower, var_upper, 0, settings.eps_zero).nonzero()[0]
 
@@ -218,12 +222,17 @@ class OptAlgorithm:
         # TODO: test this part if fixed_vars is not empty
         # Adjust basic data if there are fixed vars
         if (fixed_vars):
-            var_lower = var_lower[fixed_vars]
-            var_upper = var_upper[fixed_vars]
+            not_fixed_vars = np.setdiff1d(np.arange(dimension),
+                                          fixed_vars, assume_unique=True)
+            var_lower = var_lower[not_fixed_vars]
+            var_upper = var_upper[not_fixed_vars]
             integer_vars = np.setdiff1d(integer_vars, fixed_vars, assume_unique=True)
             dimension -= len(fixed_vars)
+            A = A[:, not_fixed_vars]
         self.var_lower, self.var_upper = var_lower, var_upper
         self.integer_vars = integer_vars
+        self.A = A
+        self.b = b
 
         assert(len(var_lower) == dimension)
         assert(len(var_upper) == dimension)
@@ -333,8 +342,8 @@ class OptAlgorithm:
         self.output_stream = output_stream
     # -- end function
 
-    def update_log(self, tag, node_is_fast = None, obj_value = None, 
-                   gap = None):
+    def update_log(self, tag, node_is_fast=None, obj_value=None,
+                   gap=None, is_best=False):
         """Print a single line in the log.
 
         Update the program's log, writing information about an
@@ -358,19 +367,25 @@ class OptAlgorithm:
             multiplied by 100 before printing.
 
         """
-        if (node_is_fast is None or obj_value is None or gap is None):
-            print('Iter {:3d}'.format(self.itercount) + 
-                  ' {:38s}'.format(tag) +
-                  ' time {:7.2f}'.format(time.time() - self.start_time),
-                  file = self.output_stream)
+        if is_best:
+            show_off = '*'
         else:
-            print('Iter {:3d}'.format(self.itercount) + 
+            show_off = ' '
+        if (node_is_fast is None or obj_value is None or gap is None):
+            print('Iter {:3d}'.format(self.itercount) +
+                  ' {:38s}'.format(tag) +
+                  ' time {:7.2f}'.format(time.time() - self.start_time) +
+                  ' {:s}'.format(show_off),
+                  file=self.output_stream)
+        else:
+            print('Iter {:3d}'.format(self.itercount) +
                   ' {:15s}'.format(tag) +
                   ': obj{:s}'.format('~' if node_is_fast else ' ') +
                   ' {:16.6f}'.format(obj_value) +
                   ' time {:7.2f}'.format(time.time() - self.start_time) +
-                  ' gap {:8.2f}'.format(gap*100),
-                  file = self.output_stream)
+                  ' gap {:8.2f}'.format(gap*100) +
+                  ' {:s}'.format(show_off),
+                  file=self.output_stream)
         self.output_stream.flush()
     # -- end function
 
@@ -623,6 +638,7 @@ class OptAlgorithm:
         var_lower, var_upper = self.var_lower, self.var_upper
         l_lower, l_upper = self.l_lower, self.l_upper
         integer_vars = self.integer_vars
+        A, b = self.A, self.b
         settings, l_settings = self.settings, self.l_settings
         # The dimension will not be changed so it is safe to localize
         n = self.n
@@ -645,8 +661,8 @@ class OptAlgorithm:
                gap > l_settings.eps_opt):
             # If the user wants to skip inf_step, we proceed to the
             # next iteration.
-            if (self.current_step == self.inf_step and 
-                not l_settings.do_infstep):
+            if (self.current_step == self.inf_step and
+                    not l_settings.do_infstep):
                 self.advance_step_counter()
                 continue
 
@@ -786,8 +802,8 @@ class OptAlgorithm:
             else:
                 # Global search
                 next_p = global_step(l_settings, n, k, l_lower, l_upper,
-                                     integer_vars, self.node_pos, rbf_l, 
-                                     rbf_h, tfv, Amatinv,
+                                     integer_vars, A, b, self.node_pos,
+                                     rbf_l, rbf_h, tfv, Amatinv,
                                      self.fmin_index, self.current_step)
                 iteration_id = 'GlobalStep'
             # -- end if
@@ -839,7 +855,7 @@ class OptAlgorithm:
                 gap = min(ru.compute_gap(l_settings, next_val, 
                                          self.is_best_fast), gap)
                 self.update_log(iteration_id, self.node_is_fast[-1], 
-                                next_val, gap)
+                                next_val, gap, is_best=improved)
 
             # Update iteration number
             self.itercount += 1
@@ -950,10 +966,11 @@ class OptAlgorithm:
                     next_p_orig = ru.transform_domain(l_settings, var_lower,
                                                       var_upper, next_p, True)
                     # Add to the lists.
-                    self.add_node(next_p, next_p_orig, next_val, node_is_fast)
+                    improved = self.add_node(next_p, next_p_orig, next_val, node_is_fast)
                     gap = min(ru.compute_gap(l_settings, next_val, 
                                              self.is_best_fast), gap)
-                    self.update_log(iid, self.node_is_fast[-1], next_val, gap)
+                    self.update_log(iid, self.node_is_fast[-1], next_val, gap,
+                                    is_best=improved)
                     # Update iteration number
                     self.itercount += 1
                     # Check if we should save the state.
@@ -1235,10 +1252,11 @@ class OptAlgorithm:
             next_p_orig = ru.transform_domain(l_settings, var_lower,
                                               var_upper, next_p, True)
             # Add to the lists.
-            self.add_node(next_p, next_p_orig, next_val, node_is_fast)
+            improved = self.add_node(next_p, next_p_orig, next_val, node_is_fast)
             gap = min(ru.compute_gap(l_settings, next_val, 
                                      self.is_best_fast), gap)
-            self.update_log(iid, self.node_is_fast[-1], next_val, gap)
+            self.update_log(iid, self.node_is_fast[-1], next_val, gap,
+                            is_best=improved)
             # Update iteration number
             self.itercount += 1
         # -- end for
@@ -1276,7 +1294,8 @@ class OptAlgorithm:
         self.num_nodes_at_restart = np.shape(self.all_node_pos)[0]
         # Compute a new set of starting points
         node_pos = ru.initialize_nodes(self.l_settings, self.var_lower,
-                                       self.var_upper, self.integer_vars)
+                                       self.var_upper, self.integer_vars,
+                                       self.A, self.b)
         if (self.current_mode == 'accurate' or
             self.num_fast_restarts > self.l_settings.max_fast_restarts or
             (self.fast_evalcount + self.n + 1 >=
@@ -1359,7 +1378,11 @@ class OptAlgorithm:
             min_dist = ru.get_min_distance(self.node_pos[i],
                                            np.vstack((self.node_pos[:i],
                                                       self.node_pos[(i+1):])))
-            self.update_log('Initialization', self.node_is_fast[i], val, gap)
+            if i == self.fmin_index:
+                self.update_log('Initialization', self.node_is_fast[i], val, gap,
+                                is_best=True)
+            else:
+                self.update_log('Initialization', self.node_is_fast[i], val, gap)
 
     # -- end function
 
@@ -1564,6 +1587,7 @@ class OptAlgorithm:
     # -- end function
 # -- end class
 
+
 def pure_global_step(settings, n, k, var_lower, var_upper, integer_vars,
                      node_pos, mat):
     """Perform the pure global search step.
@@ -1624,7 +1648,8 @@ def pure_global_step(settings, n, k, var_lower, var_upper, integer_vars,
                                   integer_vars, node_pos, mat)
 # -- end function
 
-def local_step(settings, n, k, var_lower, var_upper, integer_vars, 
+
+def local_step(settings, n, k, var_lower, var_upper, integer_vars,
                node_pos, rbf_lambda, rbf_h, tfv, fast_node_index,
                Amat, Amatinv, fmin_index, two_phase_optimization, 
                current_mode, node_is_fast):
@@ -1720,13 +1745,13 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars,
     assert(isinstance(node_pos, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
-    assert(len(var_lower)==n)
-    assert(len(var_upper)==n)
-    assert(len(rbf_lambda)==k)
-    assert(len(node_pos)==k)
-    assert(len(node_is_fast)==k)
+    assert(len(var_lower) == n)
+    assert(len(var_upper) == n)
+    assert(len(rbf_lambda) == k)
+    assert(len(node_pos) == k)
+    assert(len(node_is_fast) == k)
     assert(0 <= fmin_index < k)
-    assert((current_mode=='fast') or (current_mode=='accurate'))
+    assert((current_mode == 'fast') or (current_mode=='accurate'))
     assert(isinstance(settings, RbfSettings))
     assert(isinstance(Amat, np.matrix))
     assert(isinstance(Amatinv, np.matrix))
@@ -1809,7 +1834,7 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars,
 # -- end function
 
 def global_step(settings, n, k, var_lower, var_upper, integer_vars,
-                node_pos, rbf_lambda, rbf_h, tfv, Amatinv,
+                A, b, node_pos, rbf_lambda, rbf_h, tfv, Amatinv,
                 fmin_index, current_step):
     """Perform global search step.
     
@@ -1837,6 +1862,12 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
         A list containing the indices of the integrality constrained
         variables. If empty list, all variables are assumed to be
         continuous.
+
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
 
     node_pos : 2D numpy.ndarray[float]
         List of coordinates of the nodes.
@@ -1874,13 +1905,15 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
     assert(isinstance(var_lower, np.ndarray))
     assert(isinstance(var_upper, np.ndarray))
     assert(isinstance(integer_vars, np.ndarray))
+    assert(isinstance(A, np.ndarray))
+    assert(isinstance(b, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
     assert(isinstance(node_pos, np.ndarray))
-    assert(len(var_lower)==n)
-    assert(len(var_upper)==n)
-    assert(len(rbf_lambda)==k)
-    assert(len(node_pos)==k)
+    assert(len(var_lower) == n)
+    assert(len(var_upper) == n)
+    assert(len(rbf_lambda) == k)
+    assert(len(node_pos) == k)
     assert(0 <= fmin_index < k)
     assert(isinstance(Amatinv, np.matrix))
     assert(isinstance(settings, RbfSettings))
@@ -1955,7 +1988,7 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
         local_varu = var_upper
 
     return aux.global_search(settings, n, k, local_varl, local_varu,
-                             integer_vars, node_pos, rbf_lambda,
+                             integer_vars, A, b, node_pos, rbf_lambda,
                              rbf_h, Amatinv, target_val, dist_weight,
                              scaled_fmin, scaled_fmax)
 # -- end function

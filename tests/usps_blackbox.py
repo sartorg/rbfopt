@@ -31,16 +31,6 @@ class Blackbox(bb.BlackBox):
         A list of indices of the variables that must assume integer
         values.
 
-    exponent : float
-        The power to which the sum of the variables should be
-        raised.
-
-    Parameters
-    ----------
-    exponent : float
-        The power to which the sum of the variables should be
-        raised. Should be nonnegative.
-
     See also
     --------
     :class:`rbfopt_black_box.BlackBox`
@@ -67,6 +57,9 @@ class Blackbox(bb.BlackBox):
         self.var_upper = np.ones(self.dimension)
 
         self.integer_vars = np.array(np.arange(256), np.int_)
+
+        self.A = np.array([[[1]*256, [-1]*256]])
+        self.b = np.array([60, -2])
     # -- end function
 
     def get_dimension(self):
@@ -112,6 +105,32 @@ class Blackbox(bb.BlackBox):
             integer values. Can be empty.
         """
         return self.integer_vars
+    # -- end function
+
+    def get_constraints(self):
+        """Return the list of integer variables.
+
+        Returns
+        -------
+        1D numpy.ndarray[int]
+            A list of indices of the variables that must assume
+            integer values. Can be empty.
+        """
+        return self.A
+
+    # -- end function
+
+    def get_rhs(self):
+        """Return the list of integer variables.
+
+        Returns
+        -------
+        1D numpy.ndarray[int]
+            A list of indices of the variables that must assume
+            integer values. Can be empty.
+        """
+        return self.b
+
     # -- end function
 
     def evaluate(self, x):

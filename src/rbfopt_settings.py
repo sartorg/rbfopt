@@ -477,7 +477,7 @@ class RbfSettings:
                 size = var_upper - var_lower
                 size.sort()
                 # If the problem is badly scaled, i.e. a variable has
-                # a domain 5 times as large as anoether, rescale.
+                # a domain 5 times as large as an other, rescale.
                 if (size[-1] >= 5*size[0]):
                     l_settings.domain_scaling = 'affine'
                 else:
@@ -498,12 +498,12 @@ class RbfSettings:
         output_stream : file
             The stream on which messages are printed.
         """
-        print('RbfSettings:', file = output_stream)
+        print('RbfSettings:', file=output_stream)
         attrs = vars(self)
         print(', '.join('{:s}: {:s}'.format(str(item[0]), str(item[1])) 
                         for item in sorted(attrs.items())),
-              file = output_stream)
-        print(file = output_stream)
+              file=output_stream)
+        print(file=output_stream)
         output_stream.flush()
 
 # -- end of class RbfSettings

@@ -386,7 +386,7 @@ def get_lhd_corr_points(var_lower, var_upper, num_trials = 50):
 
 # -- end function
 
-def get_quasilhd_points(var_lower, var_upper, integer_vars):
+def get_quasilhd_points(var_lower, var_upper, integer_vars, A, b):
     """Compute a (approximated) latin hypercube design taking
     into account the problem constraints.
 
@@ -419,15 +419,15 @@ def get_quasilhd_points(var_lower, var_upper, integer_vars):
     n = len(var_lower)
 
     node_pos = quasilhd.find_lhd(n+1, var_lower, var_upper,
-                                 [[1]*n, [-1]*n], [60, -2],
-                                 int_vars=integer_vars)
+                                 A, b, int_vars=integer_vars)
 
     return node_pos
 
 # -- end function
 
 
-def initialize_nodes(settings, var_lower, var_upper, integer_vars):
+def initialize_nodes(settings, var_lower, var_upper, integer_vars,
+                     A=None, b=None):
     """Compute the initial sample points.
 
     Compute an initial Numpy array of nodes using the initialization strategy
@@ -439,15 +439,21 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars):
         Global and algorithmic settings.
 
     var_lower : 1D numpy.ndarray[float]
-        Numpy array of lower bounds of the variables.
+        List of lower bounds of the variables.
 
     var_upper : 1D numpy.ndarray[float]
-        Numpy array of upper bounds of the variables.
+        List of upper bounds of the variables.
 
     integer_vars : 1D numpy.ndarray[int]
-        A Numpy array containing the indices of the integrality constrained
+        A list containing the indices of the integrality constrained
         variables. If empty Numpy array, all variables are assumed to be
         continuous.
+
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
 
     Returns
     -------
@@ -466,6 +472,8 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars):
     assert(isinstance(var_lower, np.ndarray))
     assert(isinstance(var_upper, np.ndarray))
     assert(isinstance(integer_vars, np.ndarray))
+    assert(isinstance(A, np.ndarray))
+    assert(isinstance(b, np.ndarray))
     assert(len(var_lower) == len(var_upper))
 
     # We must make sure points are linearly independent; if they are
@@ -486,7 +494,7 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars):
             nodes = get_lhd_corr_points(var_lower, var_upper)
         elif (settings.init_strategy == 'quasilhd'):
             nodes = get_quasilhd_points(var_lower, var_upper,
-                                               integer_vars)
+                                        integer_vars, A, b)
 
         if (integer_vars.size):
                 for i in integer_vars:
@@ -500,7 +508,6 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars):
     if (itercount == config.MAX_RANDOM_INIT):
         raise RuntimeError('Exceeded number of random initializations')
 
-    print('Quasi LHD found.')
     return nodes
 
 # -- end function
