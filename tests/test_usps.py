@@ -16,12 +16,13 @@ from sklearn.feature_selection import SelectFromModel
 def rbfopt_search():
 
     black_box = usps_blackbox.Blackbox()
-    settings = rbfopt_settings.RbfSettings(max_evaluations=300,
+    settings = rbfopt_settings.RbfSettings(max_evaluations=310,
                                            global_search_method='sampling',
                                            init_strategy='quasilhd',
                                            domain_scaling='off',
                                            max_consecutive_local_searches=1,
                                            num_global_searches=5,
+                                           print_solver_output=False,
                                            rand_seed=np.random.randint(2 ** 30))
 
     alg = rbfopt_algorithm.OptAlgorithm(settings=settings, black_box=black_box)

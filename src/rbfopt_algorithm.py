@@ -782,7 +782,7 @@ class OptAlgorithm:
                 # Local search
                 (adj, next_p, 
                  ind) = local_step(l_settings, n, k, l_lower, l_upper,
-                                   integer_vars, self.node_pos, rbf_l, 
+                                   integer_vars, self.A, self.b, self.node_pos, rbf_l,
                                    rbf_h, tfv, fast_node_index,
                                    Amat, Amatinv, self.fmin_index,
                                    self.two_phase_optimization,
@@ -1215,7 +1215,7 @@ class OptAlgorithm:
                 # Local search
                 new_res = pool.apply_async(local_step,
                                            (l_settings, n, k, l_lower, 
-                                            l_upper, integer_vars, 
+                                            l_upper, integer_vars, self.A, self.b,
                                             node_pos, rbf_l, rbf_h, tfv,
                                             fast_node_index, Amat,
                                             Amatinv, self.fmin_index,
@@ -1649,7 +1649,7 @@ def pure_global_step(settings, n, k, var_lower, var_upper, integer_vars,
 # -- end function
 
 
-def local_step(settings, n, k, var_lower, var_upper, integer_vars,
+def local_step(settings, n, k, var_lower, var_upper, integer_vars, A, b,
                node_pos, rbf_lambda, rbf_h, tfv, fast_node_index,
                Amat, Amatinv, fmin_index, two_phase_optimization, 
                current_mode, node_is_fast):
@@ -1761,7 +1761,7 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars,
                                integer_vars, node_pos, rbf_lambda, rbf_h)
     if (min_rbf is not None):
         min_rbf_val = ru.evaluate_rbf(settings, min_rbf, n, k, 
-                                      node_pos, rbf_lambda, rbf_h)
+                                      node_pos, rbf_lambda, rbf_h, A, b)
     # If the RBF cannot me minimized, or if the minimum is
     # larger than the node with smallest value, just take the
     # node with the smallest value.
@@ -1792,7 +1792,7 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars,
         ru.round_integer_bounds(local_varl, local_varu, 
                                 integer_vars)
         next_p = aux.global_search(settings, n, k, local_varl,
-                                   local_varu, integer_vars,
+                                   local_varu, integer_vars, A, b,
                                    node_pos, rbf_lambda, rbf_h,
                                    Amatinv, target_val, dist_weight,
                                    scaled_fmin, scaled_fmax)

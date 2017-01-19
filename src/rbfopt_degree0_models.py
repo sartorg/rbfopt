@@ -26,6 +26,7 @@ import numpy as np
 import rbfopt_config as config
 from rbfopt_settings import RbfSettings
 
+
 def create_min_rbf_model(settings, n, k, var_lower, var_upper, 
                          integer_vars, node_pos, rbf_lambda, rbf_h):
     """Create the concrete model to minimize the RBF.
@@ -142,12 +143,19 @@ def create_min_rbf_model(settings, n, k, var_lower, var_upper,
     model.NonhomoConstraint = Constraint(model.Qlast, 
                                          rule=_nonhomo_constraint_rule)
 
+    # Feature selection constraints
+    #model.UpperFeature = Constraint(rule=_num_features_upper_rule)
+    #model.LowerFeature = Constraint(rule=_num_features_lower_rule)
+
     # Add integer variables if necessary
     if (len(integer_vars) > 0):
         add_integrality_constraints(model, integer_vars)
 
+    model.write('test.nl', 'nl')
+
     return model
 # -- end function
+
 
 def create_max_one_over_mu_model(settings, n, k, var_lower, var_upper, 
                                  integer_vars, node_pos, mat):
@@ -281,6 +289,7 @@ def create_max_one_over_mu_model(settings, n, k, var_lower, var_upper,
 
     return model
 # -- end function
+
 
 def create_max_h_k_model(settings, n, k, var_lower, var_upper, integer_vars,
                          node_pos, rbf_lambda, rbf_h, mat, target_val):
@@ -443,6 +452,7 @@ def create_max_h_k_model(settings, n, k, var_lower, var_upper, integer_vars,
 
 # -- end function
 
+
 def create_min_bump_model(settings, n, k, Phimat, Pmat, node_val, 
                           fast_node_index, fast_node_err_bounds):
     """Create a model to find RBF coefficients with min bumpiness.
@@ -565,6 +575,7 @@ def create_min_bump_model(settings, n, k, Phimat, Pmat, node_val,
 
 # -- end function
 
+
 def create_maximin_dist_model(settings, n, k, var_lower, var_upper,
                               integer_vars, node_pos):
     """Create the concrete model to maximize the minimum distance.
@@ -651,6 +662,7 @@ def create_maximin_dist_model(settings, n, k, var_lower, var_upper,
     return model
 
 # -- end function
+
 
 def create_min_msrsm_model(settings, n, k, var_lower, var_upper,
                            integer_vars, node_pos, rbf_lambda, rbf_h, 
@@ -826,6 +838,7 @@ def create_min_msrsm_model(settings, n, k, var_lower, var_upper,
 
 # -- end function
 
+
 def add_integrality_constraints(model, integer_vars):
     """Add integrality constraints to the model.
 
@@ -864,9 +877,11 @@ def add_integrality_constraints(model, integer_vars):
 
 # -- end function
 
+
 # Function to return bounds
 def _x_bounds(model, i):
     return (model.var_lower[i], model.var_upper[i])
+
 
 # Constraints: definition of the u components of u_pi for a multiquadric RBF. 
 # The expression is:
@@ -877,6 +892,7 @@ def _udef_multiquad_constraint_rule(model, i):
                  sum((model.x[j] - model.node[i, j])**2 for j in model.N) +
                  config.GAMMA*config.GAMMA))
 
+
 # Constraints: definition of the u components of u_pi for a linear RBF.
 # The expression is:
 # for i in K: upi_i = \sqrt(sum_{j in N} (x_j - node_{i, j})^2)
@@ -885,10 +901,12 @@ def _udef_linear_constraint_rule(model, i):
             sqrt(config.DISTANCE_SHIFT + 
                  sum((model.x[j] - model.node[i, j])**2 for j in model.N)))
 
+
 # Constraint: definition of the nonhomogeneous term of the polynomial. 
 # The expression is: upi_q = 1.0
 def _nonhomo_constraint_rule(model, i):
     return (model.u_pi[i] == 1.0)
+
 
 # Constraints: definition of the value of the RBF. Expression:
 # sum_{j in K} lambda_j u_j + sum_{j in N} h_j \pi_j + h_{n+1} \pi_{n+1}
@@ -896,6 +914,7 @@ def _nonhomo_constraint_rule(model, i):
 # min sum_{j in Q} lambda_h_j u_pi_j
 def _rbfdef_constraint_rule(model):
     return (model.rbfval == summation(model.lambda_h, model.u_pi))
+
 
 # Constraints: Definition of \mu_k. There should be a constant term
 # \phi(0). Removed because it is zero in this case. Expression:
@@ -905,6 +924,7 @@ def _mukdef_constraint_rule(model):
                 for i in model.Q for j in model.Q) - model.phi_0 == 
             model.mu_k_inv)
 
+
 # Constraints: definition of the interpolation conditions. Expression:
 # Phi lambda + P h + slack = F
 def _intr_constraint_rule(model, i):
@@ -912,16 +932,19 @@ def _intr_constraint_rule(model, i):
             sum(model.Pm[i, j]*model.rbf_h[j] for j in model.P) +
             model.slack[i] == model.node_val[i])
 
+
 # Constraints: definition of the unisolvence conditions. Expression:
 # P \lambda = 0
 def _unis_constraint_rule(model, i):
     return (sum(model.Pm[j, i]*model.rbf_lambda[j] for j in model.K) == 0.0)
+
 
 # Constraints: definition of the minimum distance constraint.
 # for i in K: mindistsq <= dist(x, x^i)^2
 def _mdistdef_constraint_rule(model, i):
     return (model.mindistsq <= config.DISTANCE_SHIFT + 
             sum((model.x[j] - model.node[i, j])**2 for j in model.N))
+
 
 # Objective function for the "minimize rbf" problem. The expression is:
 # min sum_{j in K} lambda_j d_j^3 + sum_{j in N} h_j x_j + h_{n+1}
@@ -930,16 +953,19 @@ def _mdistdef_constraint_rule(model, i):
 def _min_rbf_obj_expression(model):
     return (summation(model.lambda_h, model.u_pi))
 
+
 # Objective function for the "maximize 1/\mu" problem. The expression is:
 # max -\sum_{i in Q, j in Q} A^{-1}_{ij} upi_i upi_j;
 def _max_one_over_mu_obj_expression(model):
     return (sum(model.Ainv[i,j] * model.u_pi[i] * model.u_pi[j] 
                 for i in model.Q for j in model.Q) - model.phi_0)
 
+
 # Objective function for the "maximize h_k" problem. The expression is:
 # 1/(\mu_k(x) [s_k(x) - f^\ast]^2)
 def _max_h_k_obj_expression(model):
     return (model.mu_k_inv/((model.rbfval - model.fstar)**2))
+
 
 # Objective function for the "minimize bumpiness with variable nodes"
 # problem. The expression is:
@@ -947,6 +973,7 @@ def _max_h_k_obj_expression(model):
 def _min_bump_obj_expression(model):
     return (sum(model.Phi[i,j] * model.rbf_lambda[i] * model.rbf_lambda[j]
                 for i in model.K for j in model.K))
+
 
 # Objective function for the "minimize MSRSM obj" problem. The expression is:
 # dist_weight * (dist_max - \min_k distance(x, x^k)) / (dist_max - dist_min)
@@ -957,16 +984,28 @@ def _min_msrsm_obj_expression(model):
             model.obj_weight * (model.rbfval - model.fmin) / 
             (model.fmax - model.fmin))
 
+
 # Function to return bounds on the slack variables
 def _slack_bounds(model, i):
     return (model.slack_lower[i], model.slack_upper[i])
+
 
 # Function to return bounds of the y variables
 def _y_bounds(model, i):
     return (model.var_lower[model.integer_vars[i]], 
             model.var_upper[model.integer_vars[i]])
 
+
 # Constraints: definition of the integrality constraints for the
 # variables.
 def _int_constraint_rule(model, i):
     return (model.x[model.integer_vars[i]] == model.y[i])
+
+
+# Feature selection constraints
+def _num_features_upper_rule(model):
+    return sum(model.x[i] for i in model.N) <= 70
+
+
+def _num_features_lower_rule(model):
+    return sum(model.x[i] for i in model.N) >= 60

@@ -136,9 +136,15 @@ def create_min_rbf_model(settings, n, k, var_lower, var_upper,
     model.NonhomoConstraint = Constraint(model.Qlast, 
                                          rule=_nonhomo_constraint_rule)
 
+    # Feature selection constraints
+    #model.UpperFeature = Constraint(rule=_num_features_upper_rule)
+    #model.LowerFeature = Constraint(rule=_num_features_lower_rule)
+
     # Add integer variables if necessary
     if (len(integer_vars) > 0):
         add_integrality_constraints(model, integer_vars)
+
+    model.write('test2.nl', 'nl')
 
     return model
 # -- end function
@@ -969,3 +975,12 @@ def _y_bounds(model, i):
 # variables.
 def _int_constraint_rule(model, i):
     return (model.x[model.integer_vars[i]] == model.y[i])
+
+
+# Feature selection constraints
+def _num_features_upper_rule(model):
+    return (sum(model.x[i] for i in model.N) <= 70)
+
+
+def _num_features_lower_rule(model):
+    return (sum(model.x[i] for i in model.N) >= 60)
