@@ -19,7 +19,10 @@ def rbfopt_search():
     settings = rbfopt_settings.RbfSettings(max_evaluations=300,
                                            global_search_method='sampling',
                                            init_strategy='quasilhd',
-                                           domain_scaling='off')
+                                           domain_scaling='off',
+                                           max_consecutive_local_searches=1,
+                                           num_global_searches=5,
+                                           rand_seed=np.random.randint(2 ** 30))
 
     alg = rbfopt_algorithm.OptAlgorithm(settings=settings, black_box=black_box)
 

@@ -241,15 +241,15 @@ def minimize_rbf(settings, n, k, var_lower, var_upper, integer_vars,
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
 
-    assert(len(var_lower)==n)
-    assert(len(var_upper)==n)
-    assert(len(rbf_lambda)==k)
-    assert(len(node_pos)==k)
+    assert(len(var_lower) == n)
+    assert(len(var_upper) == n)
+    assert(len(rbf_lambda) == k)
+    assert(len(node_pos) == k)
     assert(isinstance(settings, RbfSettings))
 
     # Determine the size of the P matrix
     p = ru.get_size_P_matrix(settings, n)
-    assert(len(rbf_h)==p)
+    assert(len(rbf_h) == p)
 
     # Instantiate model
     if (ru.get_degree_polynomial(settings) == 1):
@@ -294,6 +294,7 @@ def minimize_rbf(settings, n, k, var_lower, var_upper, integer_vars,
     return point
 
 # -- end function
+
 
 def global_search(settings, n, k, var_lower, var_upper, integer_vars,
                   A, b, node_pos, rbf_lambda, rbf_h, mat, target_val,
@@ -418,11 +419,11 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
                                    rbf_h, mat, target_val)
         elif (settings.algorithm == 'MSRSM'):
             fitness = MetricSRSMObj(settings, n, k, node_pos, rbf_lambda, 
-                                    rbf_h, dist_weight)
+                                    rbf_h, dist_weight, A, b)
         else:
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
-        point = ga_optimize(settings, n, var_lower, var_upper,
-                            integer_vars, fitness.bulk_evaluate)
+        point = ga_optimize2(settings, n, var_lower, var_upper,
+                            integer_vars, A, b, fitness.bulk_evaluate)
     elif (settings.global_search_method == 'sampling'):
         # Sample random points, and rank according to fitness
         if (settings.algorithm == 'Gutmann'):
@@ -430,18 +431,16 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
                                    rbf_h, mat, target_val)
         elif (settings.algorithm == 'MSRSM'):
             fitness = MetricSRSMObj(settings, n, k, node_pos, rbf_lambda, 
-                                    rbf_h, dist_weight)
+                                    rbf_h, dist_weight, A, b)
         else:
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
         # num_samples = n * settings.num_samples_aux_problems
-        num_samples = n
+        num_samples = n * 2
         # samples = generate_sample_points(settings, n, var_lower, var_upper,
         #                                  integer_vars, num_samples)
-        samples = quasilhd._find_feas_points_hit_and_run2(num_samples,
-                                                          var_lower,
-                                                          var_upper,
-                                                          A, b,
-                                                          int_vars=integer_vars)
+        samples = quasilhd.find_feas_points_hr_binary_fast(num_samples, var_lower,
+                                                           var_upper, A, b,
+                                                           int_vars=integer_vars)
         scores = fitness.bulk_evaluate(samples)
         point = samples[scores.argmin()]
     elif (settings.global_search_method == 'solver'):
@@ -507,6 +506,7 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
 
 # -- end function
 
+
 def initialize_instance_variables(settings, instance, init_u_pi = True):
     """Initialize the variables of a problem instance.
 
@@ -550,6 +550,7 @@ def initialize_instance_variables(settings, instance, init_u_pi = True):
 
 # -- end function
 
+
 def initialize_h_k_aux_variables(settings, instance):
     """Initialize auxiliary variables for the h_k model.
     
@@ -577,6 +578,7 @@ def initialize_h_k_aux_variables(settings, instance):
 
 # -- end function
 
+
 def initialize_msrsm_aux_variables(settings, instance):
     """Initialize auxiliary variables for the MSRSM model.
     
@@ -601,6 +603,7 @@ def initialize_msrsm_aux_variables(settings, instance):
     instance.mindistsq = min(min(dist), config.DISTANCE_SHIFT)
 
 # -- end function
+
 
 def get_noisy_rbf_coefficients(settings, n, k, Phimat, Pmat, node_val,
                                fast_node_index, fast_node_err_bounds,
@@ -668,15 +671,15 @@ def get_noisy_rbf_coefficients(settings, n, k, Phimat, Pmat, node_val,
     """    
     assert(isinstance(settings, RbfSettings))
     assert(isinstance(node_val, np.ndarray))
-    assert(len(node_val)==k)
+    assert(len(node_val) == k)
     assert(isinstance(Phimat, np.matrix))
     assert(isinstance(Pmat, np.matrix))
     assert(isinstance(fast_node_index, np.ndarray))
-    assert(len(fast_node_index)==len(fast_node_err_bounds))
+    assert(len(fast_node_index) == len(fast_node_err_bounds))
     assert(init_rbf_lambda is None or (isinstance(init_rbf_lambda, np.ndarray) and
-                                       len(init_rbf_lambda)==k))
+                                       len(init_rbf_lambda) == k))
     assert(init_rbf_h is None or (isinstance(init_rbf_h, np.ndarray) and
-                                  len(init_rbf_h)==Pmat.shape[1]))
+                                  len(init_rbf_h) == Pmat.shape[1]))
     
     # Instantiate model
     if (ru.get_degree_polynomial(settings) == 1):
@@ -709,8 +712,8 @@ def get_noisy_rbf_coefficients(settings, n, k, Phimat, Pmat, node_val,
 
     # Solve and load results
     try:
-        results = opt.solve(instance, keepfiles = False,
-                            tee = settings.print_solver_output)
+        results = opt.solve(instance, keepfiles=False,
+                            tee=settings.print_solver_output)
         if ((results.solver.status == pyomo.opt.SolverStatus.ok) and 
             (results.solver.termination_condition == 
              pyomo.opt.TerminationCondition.optimal)):
@@ -1033,7 +1036,8 @@ def ga_mutate(n, var_lower, var_upper, is_integer, individual,
 # -- end function    
 
 
-def ga_optimize2(settings, n, var_lower, var_upper, integer_vars, objfun):
+def ga_optimize2(settings, n, var_lower, var_upper, integer_vars,
+                 A, b, objfun):
     """Compute and optimize a fitness function.
 
     Use a simple genetic algorithm to quickly find a good solution for
@@ -1058,6 +1062,12 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars, objfun):
         A list containing the indices of the integrality constrained
         variables. If empty list, all variables are assumed to be
         continuous.
+
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
 
     objfun : Callable[List[List[float]]]
         The objective function. This must be a callable function that
@@ -1095,9 +1105,9 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars, objfun):
         is_integer[integer_vars] = True
 
     # Compute initial population
-    population = generate_sample_points(settings, n, var_lower,
-                                        var_upper, integer_vars,
-                                        population_size)
+    population = quasilhd.find_feas_points_hr_binary_fast(population_size, var_lower,
+                                                          var_upper, A, b,
+                                                          integer_vars)
     for gen in range(settings.ga_num_generations):
         # Mutation rate and maximum perturbed coordinates for this
         # generation of individuals
@@ -1114,17 +1124,17 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars, objfun):
         mother = np.random.permutation(best_individuals)
         offspring = map(ga_mate, father, mother)
         # New individuals
-        new_individuals = generate_sample_points(settings, n, var_lower,
-                                                 var_upper, integer_vars,
-                                                 num_new)
+        new_individuals = quasilhd.find_feas_points_hr_binary_fast(num_new, var_lower,
+                                                                   var_upper, A, b,
+                                                                   integer_vars)
         # Make a copy of best individual, and mutate it
         best_mutated = best_individuals[0, :].copy()
-        ga_mutate2(n, var_lower, var_upper, is_integer,
+        ga_mutate(n, var_lower, var_upper, is_integer,
                   best_mutated, max_size_pert)
         # Mutate surviving (except best) if necessary
         for point in best_individuals[1:]:
             if (np.random.uniform() < curr_mutation_rate):
-                ga_mutate2(n, var_lower, var_upper, is_integer,
+                ga_mutate(n, var_lower, var_upper, is_integer,
                           point, max_size_pert)
         # Generate new population
         population = np.vstack((best_individuals, offspring, new_individuals,
@@ -1135,55 +1145,6 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars, objfun):
     rank = np.argsort(fitness_val)
     # Return best individual
     return population[rank[0]]
-
-# -- end function
-
-
-def ga_mutate2(n, var_lower, var_upper, is_integer, individual,
-               max_size_pert):
-    """Mutate an individual (point) for the genetic algorithm.
-
-    The mutation is performed in place.
-
-    Parameters
-    ----------
-
-    n : int
-        The dimension of the problem, i.e. size of the space.
-
-    var_lower : 1D numpy.ndarray[float]
-        Vector of variable lower bounds.
-
-    var_upper : 1D numpy.ndarray[float]
-        Vector of variable upper bounds.
-
-    is_integer : List[bool]
-        List of size n, each element is True if the corresponding
-        variable is integer.
-
-    individual : List[float]
-        Point to be mutated.
-
-    max_size_pert : int
-        Maximum size of the perturbation for the mutation,
-        i.e. maximum number of coordinates that can change.
-
-    """
-    assert (max_size_pert <= n)
-
-    assert (isinstance(var_lower, np.ndarray))
-    assert (isinstance(var_upper, np.ndarray))
-
-    # Randomly mutate some of the coordinates. First determine how
-    # many are mutated, then pick them randomly.
-    size_pert = np.random.randint(max_size_pert)
-    perturbed = np.random.choice(np.arange(n), size_pert, replace=False)
-    for i in perturbed:
-        if is_integer[i]:
-            individual[i] = np.random.randint(var_lower[i], var_upper[i] + 1)
-        else:
-            individual[i] = np.random.uniform(var_lower[i], var_upper[i])
-
 
 # -- end function
 
@@ -1227,9 +1188,15 @@ class MetricSRSMObj:
         Relative weight of the distance and objective function value.
         A weight of 1.0 corresponds to using solely distance, 0.0 to
         objective function.
+
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
     """
     def __init__(self, settings, n, k, node_pos, rbf_lambda, 
-                 rbf_h, dist_weight):
+                 rbf_h, dist_weight, A=None, b=None):
         """Constructor.
         """
         assert(len(node_pos)==k)
@@ -1247,6 +1214,8 @@ class MetricSRSMObj:
         self.dist_weight = dist_weight
         self.obj_weight = (1.0 if settings.modified_msrsm_score
                            else (1 - dist_weight))
+        self.A = A
+        self.b = b
     # -- end function
     
     def bulk_evaluate(self, points):
@@ -1267,7 +1236,8 @@ class MetricSRSMObj:
         # Determine distance and surrogate model value
         obj, dist = ru.bulk_evaluate_rbf(self.settings, points, self.n,
                                          self.k, self.node_pos, 
-                                         self.rbf_lambda, self.rbf_h, 'min')
+                                         self.rbf_lambda, self.rbf_h, 'min',
+                                         self.A, self.b)
         # Determine scaling factors
         min_dist, max_dist = min(dist), max(dist)
         min_obj, max_obj = min(obj), max(obj)

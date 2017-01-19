@@ -611,7 +611,9 @@ def distance(p1, p2):
     assert(isinstance(p2, np.ndarray))
     assert(len(p1) == len(p2))
 
-    return sqrt(np.dot(p1 - p2, p1 - p2))
+    p = p1-p2
+
+    return sqrt(np.dot(p, p))
 
 # -- end function
 
@@ -899,7 +901,8 @@ def get_rbf_coefficients(settings, n, k, Amat, node_val):
 
 # -- end function
 
-def evaluate_rbf(settings, point, n, k, node_pos, rbf_lambda, rbf_h):
+def evaluate_rbf(settings, point, n, k, node_pos, rbf_lambda, rbf_h,
+                 A=None, b=None):
     """Evaluate the RBF interpolant at a given point.
 
     Evaluate the RBF interpolant at a given point.
@@ -929,6 +932,12 @@ def evaluate_rbf(settings, point, n, k, node_pos, rbf_lambda, rbf_h):
         The h coefficients of the RBF interpolant, corresponding to he
         polynomial. Numpy array of dimension given by get_size_P_matrix().
 
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
+
     Returns
     -------
     float
@@ -938,6 +947,8 @@ def evaluate_rbf(settings, point, n, k, node_pos, rbf_lambda, rbf_h):
     assert(isinstance(node_pos, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
+    assert(A is None or isinstance(A, np.ndarray))
+    assert(b is None or isinstance(b, np.ndarray))
     assert(len(point)==n)
     assert(len(rbf_lambda)==k)
     assert(len(node_pos)==k)
@@ -953,12 +964,16 @@ def evaluate_rbf(settings, point, n, k, node_pos, rbf_lambda, rbf_h):
                       rbf_function(distance(point, node_pos[i]))
                       for i in range(k))
     part2 = math.fsum(rbf_h[i]*point[i] for i in range(p-1))
-    return math.fsum([part1, part2, rbf_h[-1] if (p > 0) else 0.0])
+    if A is not None and b is not None:
+        part3 = (len(A) - np.sum(np.dot(A, point) <= b)) * n
+    else:
+        part3 = 0
+    return math.fsum([part1, part2, rbf_h[-1] if (p > 0) else 0.0, part3])
 
 # -- end function
 
 def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
-                      return_distances = 'no'):
+                      return_distances = 'no', A=None, b=None):
     """Evaluate the RBF interpolant at all points in a given Numpy array.
 
     Evaluate the RBF interpolant at all points in a given Numpy array. This
@@ -999,6 +1014,12 @@ def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
         each point to interpolation nodes. If 'all', return the full
         distance matrix to the interpolation nodes.
 
+    A: 2D numpy.ndarray[float]
+        The constraint matrix A in the system Ax <= b.
+
+    b: 1D numpy.ndarray[float]
+        The rhs b in the system Ax <= b.
+
     Returns
     -------
     1D numpy.ndarray[float] or (1D numpy.ndarray[float], 1D numpy.ndarray[float])
@@ -1011,6 +1032,8 @@ def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
     assert(isinstance(node_pos, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
+    assert(A is None or isinstance(A, np.ndarray))
+    assert(b is None or isinstance(b, np.ndarray))
     assert(points.size)
     assert(len(rbf_lambda)==k)
     assert(len(node_pos)==k)
@@ -1027,6 +1050,13 @@ def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
     # Evaluate radial basis function on each distance
     rbf_vec = map(rbf_function, dist_mat.ravel())
     rbf_vec_mat = np.reshape(np.array(rbf_vec, DTYPE), (len(points), -1))
+    if A is not None and b is not None:
+        bT = np.atleast_2d(b).T
+        # Find the number of contraints that each points is violating
+        infeasible = len(A) - np.sum(np.dot(A, points.T) <= bT, axis=0)
+        part4 = infeasible * n
+    else:
+        part4 = np.zeros(len(points))
     part1 = np.dot(rbf_vec_mat, rbf_lambda)
     if (get_degree_polynomial(settings) == 1):
         part2 = np.dot(points, rbf_h[:-1])
@@ -1034,11 +1064,11 @@ def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
         part2 = np.zeros(len(points))
     part3 = rbf_h[-1] if (p > 0) else 0.0
     if (return_distances == 'min'):
-        return ((part1 + part2 + part3), (np.amin(dist_mat, 1)))
+        return ((part1 + part2 + part3 + part4), (np.amin(dist_mat, 1)))
     elif (return_distances == 'all'):
-        return ((part1 + part2 + part3), dist_mat)
+        return ((part1 + part2 + part3 + part4), dist_mat)
     else:
-        return (part1 + part2 + part3)
+        return (part1 + part2 + part3 + part4)
 
 # -- end function
 

@@ -93,9 +93,9 @@ MINLP_SOLVER_OPTIONS = [('bonmin.num_resolve_at_root', 10),
                         ('bonmin.num_retry_unsolved_random_point', 5),
                         ('bonmin.num_resolve_at_infeasibles', 5),
                         ('bonmin.algorithm', 'B-BB'),
-                        ('bonmin.time_limit', 120),
-                        ('max_cpu_time', 60),
-                        ('max_iter', 2000)]
+                        ('bonmin.time_limit', 600),
+                        ('max_cpu_time', 600),
+                        ('max_iter', 10000)]
 MINLP_SOLVER_RAND_SEED_OPTION = 'bonmin.random_generator_seed'
 MINLP_SOLVER_MAX_SEED = 2047983647
 

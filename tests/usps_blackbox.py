@@ -58,8 +58,8 @@ class Blackbox(bb.BlackBox):
 
         self.integer_vars = np.array(np.arange(256), np.int_)
 
-        self.A = np.array([[[1]*256, [-1]*256]])
-        self.b = np.array([60, -2])
+        self.A = np.array([[1]*256, [-1]*256])
+        self.b = np.array([70, -60])
     # -- end function
 
     def get_dimension(self):
@@ -112,9 +112,8 @@ class Blackbox(bb.BlackBox):
 
         Returns
         -------
-        1D numpy.ndarray[int]
-            A list of indices of the variables that must assume
-            integer values. Can be empty.
+        2D numpy.ndarray[int]
+            The constraint matrix A in the system Ax <= b.
         """
         return self.A
 
@@ -126,8 +125,7 @@ class Blackbox(bb.BlackBox):
         Returns
         -------
         1D numpy.ndarray[int]
-            A list of indices of the variables that must assume
-            integer values. Can be empty.
+            The rhs b in the system Ax <= b.
         """
         return self.b
 
@@ -157,7 +155,7 @@ class Blackbox(bb.BlackBox):
         clf.fit(self.X_train[:, x.astype(bool)], self.Y_train)
         prediction = clf.predict(self.X_validate[:, x.astype(bool)])
 
-        return sum(prediction != self.Y_validate) + (np.sum(x)-60)**2
+        return sum(prediction != self.Y_validate)
     # -- end function
 
     def evaluate_fast(self, x):
