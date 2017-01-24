@@ -1751,7 +1751,7 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars, A, b,
     assert(len(node_pos) == k)
     assert(len(node_is_fast) == k)
     assert(0 <= fmin_index < k)
-    assert((current_mode == 'fast') or (current_mode=='accurate'))
+    assert((current_mode == 'fast') or (current_mode == 'accurate'))
     assert(isinstance(settings, RbfSettings))
     assert(isinstance(Amat, np.matrix))
     assert(isinstance(Amatinv, np.matrix))
@@ -1759,6 +1759,7 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars, A, b,
     # Local search: compute the minimum of the RBF.
     min_rbf = aux.minimize_rbf(settings, n, k, var_lower, var_upper,
                                integer_vars, node_pos, rbf_lambda, rbf_h)
+    #min_rbf = None
     if (min_rbf is not None):
         min_rbf_val = ru.evaluate_rbf(settings, min_rbf, n, k, 
                                       node_pos, rbf_lambda, rbf_h, A, b)

@@ -1204,7 +1204,7 @@ class MetricSRSMObj:
         assert(0 <= dist_weight <= 1)
         assert(isinstance(settings, RbfSettings))
         p = ru.get_size_P_matrix(settings, n)
-        assert(len(rbf_h)==(p))
+        assert(len(rbf_h) == p)
         self.settings = settings
         self.n = n
         self.k = k

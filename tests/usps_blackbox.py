@@ -56,7 +56,7 @@ class Blackbox(bb.BlackBox):
         self.var_lower = np.zeros(self.dimension)
         self.var_upper = np.ones(self.dimension)
 
-        self.integer_vars = np.array(np.arange(256), np.int_)
+        self.integer_vars = np.arange(256)
 
         self.A = np.array([[1]*256, [-1]*256])
         self.b = np.array([70, -60])
@@ -146,6 +146,7 @@ class Blackbox(bb.BlackBox):
             Value of the function at x.
 
         """
+        assert (isinstance(x, np.ndarray))
         # Decision Tree
         clf = tree.DecisionTreeClassifier()
 

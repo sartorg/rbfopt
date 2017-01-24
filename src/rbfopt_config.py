@@ -89,13 +89,16 @@ MINLP_SOLVER_NAME = 'bonmin'
 # If the path contains directories, use forward slashes '/' to
 # separate them, even on Windows.
 MINLP_SOLVER_PATH = 'bonmin'
-MINLP_SOLVER_OPTIONS = [('bonmin.num_resolve_at_root', 10),
-                        ('bonmin.num_retry_unsolved_random_point', 5),
-                        ('bonmin.num_resolve_at_infeasibles', 5),
+MINLP_SOLVER_OPTIONS = [('bonmin.num_resolve_at_root', 5),
+                        ('bonmin.num_retry_unsolved_random_point', 1),
+                        ('bonmin.num_resolve_at_infeasibles', 1),
                         ('bonmin.algorithm', 'B-BB'),
-                        ('bonmin.time_limit', 600),
-                        ('max_cpu_time', 600),
-                        ('max_iter', 10000)]
+                        ('bonmin.time_limit', 180),
+                        ('bonmin.node_comparison', 'depth-first'),
+                        ('bonmin.nlp_failure_behavior', 'fathom'),
+                        ('bonmin.solution_limit', 1),
+                        ('max_cpu_time', 100),
+                        ('max_iter', 1000)]
 MINLP_SOLVER_RAND_SEED_OPTION = 'bonmin.random_generator_seed'
 MINLP_SOLVER_MAX_SEED = 2047983647
 

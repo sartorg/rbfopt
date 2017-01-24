@@ -137,8 +137,8 @@ def create_min_rbf_model(settings, n, k, var_lower, var_upper,
                                          rule=_nonhomo_constraint_rule)
 
     # Feature selection constraints
-    #model.UpperFeature = Constraint(rule=_num_features_upper_rule)
-    #model.LowerFeature = Constraint(rule=_num_features_lower_rule)
+    model.UpperFeature = Constraint(rule=_num_features_upper_rule)
+    model.LowerFeature = Constraint(rule=_num_features_lower_rule)
 
     # Add integer variables if necessary
     if (len(integer_vars) > 0):
