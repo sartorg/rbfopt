@@ -201,7 +201,7 @@ def get_bump_new_node(settings, n, k, node_pos, node_val, new_node,
                                                     fast_node_err_bounds,
                                                     rbf_l, rbf_h)
 
-    bumpiness = np.dot(np.dot(rbf_l, Amat), rbf_l)
+    bumpiness = np.dot(np.dot(rbf_l, Amat[:(k+1), :(k+1)]), rbf_l)
 
     return bumpiness
 

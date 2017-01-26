@@ -161,7 +161,7 @@ def pure_global_search(settings, n, k, var_lower, var_upper,
         # Solve and load results
         try:
             results = opt.solve(instance, keepfiles = False, 
-                                tee = settings.print_solver_output)
+                                tee=settings.print_solver_output)
             if ((results.solver.status == pyomo.opt.SolverStatus.ok) and 
                 (results.solver.termination_condition == 
                  pyomo.opt.TerminationCondition.optimal)):
@@ -276,19 +276,20 @@ def minimize_rbf(settings, n, k, var_lower, var_upper, integer_vars,
     set_minlp_solver_options(opt)
 
     # Solve and load results
-    try:
-        results = opt.solve(instance, keepfiles=False,
-                            tee=settings.print_solver_output)
-        if ((results.solver.status == pyomo.opt.SolverStatus.ok) and 
-            (results.solver.termination_condition == 
-             pyomo.opt.TerminationCondition.optimal)):
-            # this is feasible and optimal
-            instance.solutions.load_from(results)
-            point = np.array([instance.x[i].value for i in instance.N])
-            ru.round_integer_vars(point, integer_vars)
-        else:
-            point = None
-    except:
+    results = opt.solve(instance, keepfiles=False,
+                        tee=settings.print_solver_output)
+    if ((results.solver.status == pyomo.opt.SolverStatus.ok and
+        results.solver.termination_condition ==
+         pyomo.opt.TerminationCondition.optimal) or
+            (results.solver.status == pyomo.opt.SolverStatus.warning and
+                results.solver.termination_condition ==
+                pyomo.opt.TerminationCondition.maxIterations)):
+        # TODO: Check these conditions
+        # this is feasible and optimal or feasible (perhaps)
+        instance.solutions.load_from(results)
+        point = np.array([instance.x[i].value for i in instance.N])
+        ru.round_integer_vars(point, integer_vars)
+    else:
         point = None
 
     return point
