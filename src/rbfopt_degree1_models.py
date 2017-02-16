@@ -137,8 +137,8 @@ def create_min_rbf_model(settings, n, k, var_lower, var_upper,
                                          rule=_nonhomo_constraint_rule)
 
     # Feature selection constraints
-    model.UpperFeature = Constraint(rule=_num_features_upper_rule)
-    model.LowerFeature = Constraint(rule=_num_features_lower_rule)
+    #model.UpperFeature = Constraint(rule=_num_features_upper_rule)
+    #model.LowerFeature = Constraint(rule=_num_features_lower_rule)
 
     # Add integer variables if necessary
     if (len(integer_vars) > 0):
@@ -564,6 +564,105 @@ def create_min_bump_model(settings, n, k, Phimat, Pmat, node_val,
 
 # -- end function
 
+
+def create_min_bump_model_init(settings, n, k, Phimat, Pmat, node_val):
+    """Create a model to find RBF coefficients with min bumpiness
+    during the initialization.
+
+    Create a quadratic problem to compute the coefficients of the RBF
+    interpolant that minimizes bumpiness being the linear systems
+    underdetermined during the initialization.
+
+    Parameters
+    ----------
+    settings : :class:`rbfopt_settings.RbfSettings`
+        Global and algorithmic settings.
+
+    n : int
+        The dimension of the problem, i.e. size of the space.
+
+    k : int
+        Number of nodes, i.e. interpolation points.
+
+    Phimat : numpy.matrix
+        Matrix Phi, i.e. top left part of the standard RBF matrix.
+
+    Pmat : numpy.matrix
+        Matrix P, i.e. top right part of the standard RBF matrix.
+
+    node_val : List[float]
+        List of values of the function at the nodes.
+
+    Returns
+    -------
+    pyomo.ConcreteModel
+        The concrete model describing the problem.
+    """
+    assert (isinstance(settings, RbfSettings))
+    assert (len(node_val) == k)
+    assert (isinstance(Phimat, np.matrix))
+    assert (isinstance(Pmat, np.matrix))
+    assert (Phimat.shape == (k, k))
+    assert (Pmat.shape == (k, n + 1))
+    assert (ru.get_degree_polynomial(settings) == 1)
+
+    model = ConcreteModel()
+
+    # Dimension of the space
+    model.n = Param(initialize=n)
+    model.N = RangeSet(0, model.n - 1)
+
+    # Dimension of P matrix
+    model.p = Param(initialize=n + 1)
+    model.P = RangeSet(0, model.n)
+
+    # Number of interpolation nodes
+    model.k = Param(initialize=k)
+    model.K = RangeSet(0, model.k - 1)
+
+    # Node values, i.e. right hand sides of the first set of equations
+    # in the constraints
+    node_val_param = {}
+    for i in range(k):
+        node_val_param[i] = float(node_val[i])
+    model.node_val = Param(model.K, initialize=node_val_param)
+
+    # Phi matrix.
+    Phi_param = {}
+    for i in range(k):
+        for j in range(k):
+            if (abs(Phimat[i, j]) != 0.0):
+                Phi_param[i, j] = float(Phimat[i, j])
+    model.Phi = Param(model.K, model.K, initialize=Phi_param,
+                      default=0.0)
+
+    # P matrix.
+    Pm_param = {}
+    for i in range(k):
+        for j in range(n + 1):
+            if (abs(Pmat[i, j]) != 0.0):
+                Pm_param[i, j] = float(Pmat[i, j])
+    model.Pm = Param(model.K, model.P, initialize=Pm_param,
+                     default=0.0)
+
+    # Variable: the lambda coefficients of the RBF
+    model.rbf_lambda = Var(model.K, domain=Reals)
+
+    # Variable: the h coefficients of the RBF
+    model.rbf_h = Var(model.P, domain=Reals)
+
+    # Objective function.
+    model.OBJ = Objective(rule=_min_bump_obj_expression, sense=minimize)
+
+    # Constraints. See definitions below.
+    model.IntrConstraint = Constraint(model.K, rule=_intr_constraint_rule_init)
+    model.UnisConstraint = Constraint(model.P, rule=_unis_constraint_rule)
+
+    return model
+
+
+# -- end function
+
 def create_maximin_dist_model(settings, n, k, var_lower, var_upper,
                               integer_vars, node_pos):
     """Create the concrete model to maximize the minimum distance.
@@ -917,10 +1016,22 @@ def _intr_constraint_rule(model, i):
             sum(model.Pm[i, j]*model.rbf_h[j] for j in model.P) +
             model.slack[i] == model.node_val[i])
 
+# Constraints: definition of the interpolation conditions. Expression:
+# Phi lambda + P h = F
+def _intr_constraint_rule_init(model, i):
+    return (sum(model.Phi[i, j]*model.rbf_lambda[j] for j in model.K) +
+            sum(model.Pm[i, j]*model.rbf_h[j] for j in model.P) ==
+            model.node_val[i])
+
 # Constraints: definition of the unisolvence conditions. Expression:
 # P \lambda = 0
 def _unis_constraint_rule(model, i):
-    return (sum(model.Pm[j, i]*model.rbf_lambda[j] for j in model.K) == 0.0)
+    tmp = sum([model.Pm[j, i] == 0 for j in model.K])
+    # Skip if all zeros
+    if tmp == model.k:
+        return Constraint.Skip
+    else:
+        return (sum(model.Pm[j, i]*model.rbf_lambda[j] for j in model.K) == 0.0)
 
 # Constraints: definition of the minimum distance constraint.
 # for i in K: mindistsq <= dist(x, x^i)^2
@@ -979,8 +1090,8 @@ def _int_constraint_rule(model, i):
 
 # Feature selection constraints
 def _num_features_upper_rule(model):
-    return (sum(model.x[i] for i in model.N) <= 70)
+    return (sum(model.x[i] for i in model.N) <= 15)
 
 
 def _num_features_lower_rule(model):
-    return (sum(model.x[i] for i in model.N) >= 60)
+    return (sum(model.x[i] for i in model.N) >= 5)

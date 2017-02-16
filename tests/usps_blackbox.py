@@ -59,7 +59,7 @@ class Blackbox(bb.BlackBox):
         self.integer_vars = np.arange(256)
 
         self.A = np.array([[1]*256, [-1]*256])
-        self.b = np.array([70, -60])
+        self.b = np.array([15, -5])
     # -- end function
 
     def get_dimension(self):
@@ -156,7 +156,8 @@ class Blackbox(bb.BlackBox):
         clf.fit(self.X_train[:, x.astype(bool)], self.Y_train)
         prediction = clf.predict(self.X_validate[:, x.astype(bool)])
 
-        return sum(prediction != self.Y_validate)
+        return sum(prediction != self.Y_validate) + \
+            max(sum(x)-self.b[0], 0)**2 + max(-self.b[1]-sum(x), 0)**2
     # -- end function
 
     def evaluate_fast(self, x):

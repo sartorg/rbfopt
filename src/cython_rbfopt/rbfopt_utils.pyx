@@ -386,7 +386,7 @@ def get_lhd_corr_points(var_lower, var_upper, num_trials = 50):
 
 # -- end function
 
-def get_quasilhd_points(var_lower, var_upper, integer_vars, A, b):
+def get_quasilhd_points(num_points, var_lower, var_upper, integer_vars, A, b):
     """Compute a (approximated) latin hypercube design taking
     into account the problem constraints.
 
@@ -396,6 +396,9 @@ def get_quasilhd_points(var_lower, var_upper, integer_vars, A, b):
 
     Parameters
     ----------
+    num_points : int
+        Number of points to return.
+
     var_lower : 1D numpy.ndarray[float]
         List of lower bounds of the variables.
 
@@ -416,9 +419,7 @@ def get_quasilhd_points(var_lower, var_upper, integer_vars, A, b):
     assert (isinstance(integer_vars, np.ndarray))
     assert (len(var_lower) == len(var_upper))
 
-    n = len(var_lower)
-
-    node_pos = quasilhd.find_lhd(n+1, var_lower, var_upper,
+    node_pos = quasilhd.find_lhd(num_points, var_lower, var_upper,
                                  A, b, int_vars=integer_vars)
 
     return node_pos
@@ -427,7 +428,7 @@ def get_quasilhd_points(var_lower, var_upper, integer_vars, A, b):
 
 
 def initialize_nodes(settings, var_lower, var_upper, integer_vars,
-                     A=None, b=None):
+                     A=None, b=None, anticipated=False):
     """Compute the initial sample points.
 
     Compute an initial Numpy array of nodes using the initialization strategy
@@ -455,6 +456,9 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars,
     b: 1D numpy.ndarray[float]
         The rhs b in the system Ax <= b.
 
+    anticipated: bool
+        If True the number of points returned is less than n+1.
+
     Returns
     -------
     2D numpy.ndarray[float]
@@ -472,9 +476,11 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars,
     assert(isinstance(var_lower, np.ndarray))
     assert(isinstance(var_upper, np.ndarray))
     assert(isinstance(integer_vars, np.ndarray))
-    assert(isinstance(A, np.ndarray))
-    assert(isinstance(b, np.ndarray))
+    assert(A is None or isinstance(A, np.ndarray))
+    assert(b is None or isinstance(b, np.ndarray))
     assert(len(var_lower) == len(var_upper))
+
+    n = len(var_lower)
 
     # We must make sure points are linearly independent; if they are
     # not, we perform a given number of iterations
@@ -493,7 +499,7 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars,
         elif (settings.init_strategy == 'lhd_corr'):
             nodes = get_lhd_corr_points(var_lower, var_upper)
         elif (settings.init_strategy == 'quasilhd'):
-            nodes = get_quasilhd_points(var_lower, var_upper,
+            nodes = get_quasilhd_points(n+1, var_lower, var_upper,
                                         integer_vars, A, b)
 
         if (integer_vars.size):
@@ -507,6 +513,9 @@ def initialize_nodes(settings, var_lower, var_upper, integer_vars,
 
     if (itercount == config.MAX_RANDOM_INIT):
         raise RuntimeError('Exceeded number of random initializations')
+
+    if anticipated:
+        nodes = nodes[:int(ceil(n / 2))]
 
     return nodes
 
@@ -1054,7 +1063,7 @@ def bulk_evaluate_rbf(settings, points, n, k, node_pos, rbf_lambda, rbf_h,
         bT = np.atleast_2d(b).T
         # Find the number of contraints that each points is violating
         infeasible = len(A) - np.sum(np.dot(A, points.T) <= bT, axis=0)
-        part4 = infeasible * n
+        part4 = (infeasible * n)**2
     else:
         part4 = np.zeros(len(points))
     part1 = np.dot(rbf_vec_mat, rbf_lambda)

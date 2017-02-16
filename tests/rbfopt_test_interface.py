@@ -47,6 +47,12 @@ class TestBlackBox(BlackBox):
     def get_var_upper(self):
         return self._function.var_upper
 
+    def get_constraints(self):
+        return None
+
+    def get_rhs(self):
+        return None
+
     def get_integer_vars(self):
         return self._function.integer_vars
 

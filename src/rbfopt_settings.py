@@ -309,6 +309,8 @@ class RbfSettings:
                  print_solver_output = False,
                  save_state_interval = 100000,
                  save_state_file = 'optalgorithm_state.dat',
+                 anticipated_optimization = True,
+                 init_global_search_method = 'genetic',
                  rand_seed = 937627691):
         """Class constructor with default values. 
         """
@@ -353,6 +355,8 @@ class RbfSettings:
         self.print_solver_output = print_solver_output
         self.save_state_interval = save_state_interval
         self.save_state_file = save_state_file
+        self.anticipated_optimization = anticipated_optimization
+        self.init_global_search_method = init_global_search_method
         self.rand_seed = rand_seed
 
         if (self.rbf not in RbfSettings._allowed_rbf):

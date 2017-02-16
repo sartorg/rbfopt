@@ -20,6 +20,7 @@ import math
 import time
 import os
 import pickle
+import copy
 import numpy as np
 from multiprocessing import Pool
 try:
@@ -647,7 +648,7 @@ class OptAlgorithm:
         itercount_at_start = self.itercount
         # If this is the first iteration, initialize the algorithm
         if (self.itercount == 0):
-            self.restart()
+            self.restart_optimized()
             # We need to update the gap
             gap = ru.compute_gap(l_settings, self.fmin, self.is_best_fast)
         else: 
@@ -1291,7 +1292,7 @@ class OptAlgorithm:
         self.num_fast_restarts += (1 if self.current_mode == 'fast' 
                                    else 0)
         # Store the current number of nodes
-        self.num_nodes_at_restart = np.shape(self.all_node_pos)[0]
+        self.num_nodes_at_restart = self.all_node_pos.shape[0]
         # Compute a new set of starting points
         node_pos = ru.initialize_nodes(self.l_settings, self.var_lower,
                                        self.var_upper, self.integer_vars,
@@ -1311,7 +1312,7 @@ class OptAlgorithm:
         else:
             if (pool is None):
                 node_val = np.array([objfun_fast([self.bb, point, self.fixed_vars])
-                            for point in node_pos])
+                                     for point in node_pos])
             else:
                 map_arg = [[self.bb, point, self.fixed_vars] 
                            for point in node_pos]
@@ -1358,7 +1359,7 @@ class OptAlgorithm:
 
         # Rescale the domain of the function
         node_pos = ru.bulk_transform_domain(self.l_settings, self.var_lower,
-                                       self.var_upper, node_pos)
+                                            self.var_upper, node_pos)
         # Update references
         self.node_pos, self.node_val = node_pos, node_val
         # Update all counters and values to restart properly
@@ -1383,6 +1384,269 @@ class OptAlgorithm:
                                 is_best=True)
             else:
                 self.update_log('Initialization', self.node_is_fast[i], val, gap)
+
+    # -- end function
+
+    def restart_optimized(self, current_gap=float('inf'), pool=None):
+        """Perform a complete restart of the optimization.
+
+        Same as above, but this version starts the optimization even before
+        finding at least n+1 points, i.e. before having an affinely independent
+        set of initial points.
+
+        Parameters
+        ----------
+        current_gap : float
+            The current optimality gap. This is used purely for
+            visualization purposes in the log file, but does not
+            affect the behavior of the function in other ways.
+
+        pool : multiprocessing.Pool()
+            A pool of workers to evaluate the initialization points in
+            parallel. If None, parallel evaluation will not be
+            performed.
+        """
+        # We update the number of fast restarts here, so that if
+        # we hit the limit on fast restarts, we can evaluate
+        # points in accurate mode after restarting (even if
+        # current_mode is updated in a subsequent block of code)
+        self.num_fast_restarts += (1 if self.current_mode == 'fast'
+                                   else 0)
+        # Store the current number of nodes
+        self.num_nodes_at_restart = self.all_node_pos.shape[0]
+        # Compute a new set of starting points
+        node_pos = ru.initialize_nodes(self.l_settings, self.var_lower,
+                                       self.var_upper, self.integer_vars,
+                                       self.A, self.b, anticipated=True)
+        if (self.current_mode == 'accurate' or
+                    self.num_fast_restarts > self.l_settings.max_fast_restarts or
+                (self.fast_evalcount + self.n + 1 >=
+                     self.l_settings.max_fast_evaluations)):
+            if (pool is None):
+                node_val = np.array([objfun([self.bb, point, self.fixed_vars])
+                                     for point in node_pos])
+            else:
+                map_arg = [[self.bb, point, self.fixed_vars]
+                           for point in node_pos]
+                node_val = np.array(pool.map(objfun, map_arg))
+            self.evalcount += len(node_val)
+        else:
+            if (pool is None):
+                node_val = np.array([objfun_fast([self.bb, point, self.fixed_vars])
+                                     for point in node_pos])
+            else:
+                map_arg = [[self.bb, point, self.fixed_vars]
+                           for point in node_pos]
+                node_val = np.array(pool.map(objfun_fast, map_arg))
+            self.fast_evalcount += len(node_val)
+        self.node_is_fast = np.array([self.current_mode == 'fast'
+                                      for val in node_val])
+        # Add user-provided points if this is the first iteration
+        if (self.init_node_pos is not None and self.itercount == 0):
+            # Determine which points can be added
+            dist = ru.bulk_get_min_distance(self.init_node_pos,
+                                            node_pos)
+            init_node_pos = np.array([self.init_node_pos[i]
+                                      for i in range(len(self.init_node_pos))
+                                      if dist[i] > self.l_settings.min_dist])
+            if (self.init_node_val is None):
+                if (pool is None):
+                    init_node_val = np.array([objfun([self.bb, point,
+                                                      self.fixed_vars])
+                                              for point in init_node_pos])
+                else:
+                    map_arg = [[self.bb, point, self.fixed_vars]
+                               for point in init_node_pos]
+                    init_node_val = np.array(pool.map(objfun, map_arg))
+                self.evalcount += len(init_node_val)
+            else:
+                init_node_val = np.array([self.init_node_val[i]
+                                          for i in range(len(self.init_node_pos))
+                                          if dist[i] > self.l_settings.min_dist])
+            if not node_pos.size:
+                node_pos = init_node_pos.copy()
+            else:
+                node_pos = np.vstack((node_pos, init_node_pos))
+            node_val = np.append(node_val, init_node_val)
+
+            self.node_is_fast = np.append(self.node_is_fast, np.zeros(init_node_val.shape[0], dtype=bool))
+
+        if not self.all_node_pos.size:
+            self.all_node_pos = node_pos.copy()
+        else:
+            self.all_node_pos = np.vstack((self.all_node_pos, node_pos))
+        self.all_node_val = np.append(self.all_node_val, node_val)
+        self.all_node_is_fast = np.append(self.all_node_is_fast, self.node_is_fast)
+
+        # Rescale the domain of the function
+        node_pos = ru.bulk_transform_domain(self.l_settings, self.var_lower,
+                                            self.var_upper, node_pos)
+        # Update references
+        self.node_pos, self.node_val = node_pos, node_val
+        # Update all counters and values to restart properly
+        self.fmin_index = np.argmin(node_val)
+        self.fmin = node_val[self.fmin_index]
+        self.fmax = np.max(node_val)
+        self.fmin_cycle_start = self.fmin
+        self.num_stalled_cycles = 0
+        self.num_cons_discarded = 0
+        self.is_best_fast = self.node_is_fast[self.fmin_index]
+
+        gap = min(ru.compute_gap(self.l_settings, self.fmin,
+                                 self.is_best_fast), current_gap)
+        # TODO: do we need this?
+        # Print the initialization points
+        for (i, val) in enumerate(self.node_val):
+            min_dist = ru.get_min_distance(self.node_pos[i],
+                                           np.vstack((self.node_pos[:i],
+                                                      self.node_pos[(i + 1):])))
+            if i == self.fmin_index:
+                self.update_log('Initialization+', self.node_is_fast[i], val, gap,
+                                is_best=True)
+            else:
+                self.update_log('Initialization+', self.node_is_fast[i], val, gap)
+
+        self.optimize_init_serial(pause_after_iters=(self.n + 1 - len(self.node_pos))*2)
+
+    # -- end function
+
+    def optimize_init_serial(self, pause_after_iters=sys.maxsize):
+        """Initial optimizimation
+
+        Optimize an unknown function over a box using an RBF-based
+        algorithm. This is similar to optimize_serial() but runs
+        only during the initialization of the first n+1 points.
+
+        Parameters
+        ----------
+        pause_after_iters : int
+            Number of iterations after which the optimization process
+            should pause. Default sys.maxsize.
+
+        Returns
+        -------
+        (float, List[float], int, int, int)
+            A quintuple (value, point, itercount, evalcount,
+            fast_evalcount) containing the objective function value of
+            the best solution found, the corresponding value of the
+            decision variables, the number of iterations of the
+            algorithm, the total number of function evaluations, and
+            the number of these evaluations that were performed in
+            'fast' mode.
+
+        """
+        start_time = time.time()
+        # Localize variables that will be used often and that will
+        # never be erased through the algorithm. These are all lists
+        # or objects, so the reference points to the original.
+        var_lower, var_upper = self.var_lower, self.var_upper
+        l_lower, l_upper = self.l_lower, self.l_upper
+        integer_vars = self.integer_vars
+        A, b = self.A, self.b
+        settings, l_settings = self.settings, self.l_settings
+        # The dimension will not be changed so it is safe to localize
+        n = self.n
+
+        # Save number of iterations at start
+        itercount_at_start = self.itercount
+        iterations = self.itercount
+        iterations_for_scaling = self.itercount
+
+        init_settings = copy.deepcopy(l_settings)
+        init_settings.function_scaling = 'off'
+        init_settings.rbf = 'cubic'
+        init_settings.algorithm = 'MSRSM'
+        init_settings.global_search_method = settings.init_global_search_method
+
+        # We need to update the gap
+        gap = ru.compute_gap(init_settings, self.fmin, self.is_best_fast)
+
+        # Main loop
+        while ((len(self.node_pos) < (n+1) or
+                (len(self.node_pos) >= (n+1) and
+                np.linalg.matrix_rank(self.node_pos) < n)) and
+                iterations - itercount_at_start < pause_after_iters and
+                self.evalcount < init_settings.max_evaluations and
+                time.time() - start_time < init_settings.max_clock_time and
+                gap > init_settings.eps_opt):
+
+            if iterations_for_scaling > settings.num_global_searches:
+                iterations_for_scaling = settings.num_global_searches
+
+            # Number of nodes at current iteration
+            k = len(self.node_pos)
+
+            # Compute indices of fast node evaluations (sparse format)
+            fast_node_index = np.array(([i for (i, val) in enumerate(self.node_is_fast)
+                                         if val] if self.two_phase_optimization
+                                        else list()))
+
+            # Rescale nodes if necessary
+            tfv = ru.transform_function_values(init_settings, self.node_val,
+                                               self.fmin, self.fmax,
+                                               fast_node_index)
+            scaled_node_val, scaled_fmin, scaled_fmax, node_err_bounds = tfv
+
+            # Compute the matrices necessary for the algorithm
+            Amat = ru.get_rbf_matrix(init_settings, n, k, self.node_pos)
+
+            print(Amat)
+            print(scaled_node_val)
+
+            # Compute RBF interpolant at current stage
+            rbf_l, rbf_h = aux.get_rbf_coefficients_init(init_settings, n, k,
+                                                         Amat, scaled_node_val)
+            # If we can't find a solution, we generate a random point
+            if rbf_h is None or rbf_l is None:
+                next_p =np.random.rand(n) * (var_upper-var_lower) + var_lower
+                if (integer_vars.size):
+                    for i in integer_vars:
+                        np.around(next_p[i], out=next_p[i])
+            else:
+                # Global search
+                print(self.fmin_index)
+                next_p = global_step(init_settings, n, k, l_lower, l_upper,
+                                     integer_vars, A, b, self.node_pos,
+                                     rbf_l, rbf_h, tfv, None,
+                                     self.fmin_index, iterations_for_scaling)
+            assert(next_p is not None)
+
+            # Transform back to original space if necessary
+            next_p_orig = ru.transform_domain(init_settings, var_lower,
+                                              var_upper, next_p, True)
+            iteration_id = 'Initialization++'
+            # Evaluate the new point, in accurate mode or fast mode
+            if (self.current_mode == 'accurate'):
+                next_val = objfun([self.bb, next_p_orig, self.fixed_vars])
+                self.evalcount += 1
+                curr_is_fast = False
+            else:
+                next_val = objfun_fast([self.bb, next_p_orig,
+                                        self.fixed_vars])
+                self.fast_evalcount += 1
+                if (self.require_accurate_evaluation(next_val)):
+                    self.update_log(iteration_id, True, next_val, gap)
+                    next_val = objfun([self.bb, next_p_orig,
+                                       self.fixed_vars])
+                    self.evalcount += 1
+                    curr_is_fast = False
+                else:
+                    curr_is_fast = True
+
+            # Add to the lists
+            improved = self.add_node(next_p, next_p_orig, next_val,
+                                     curr_is_fast)
+            gap = min(ru.compute_gap(init_settings, next_val,
+                                     self.is_best_fast), gap)
+            self.update_log(iteration_id, self.node_is_fast[-1],
+                            next_val, gap, is_best=improved)
+
+            # Update iteration number
+            iterations += 1
+            iterations_for_scaling += 1
+
+        # Update timer
+        self.elapsed_time += time.time() - start_time
 
     # -- end function
 
@@ -1545,8 +1809,8 @@ class OptAlgorithm:
         # if (self.current_step <= self.first_step): 
         if (self.itercount % (self.cycle_length - self.first_step) == 0):
             if (self.fmin <= (self.fmin_cycle_start - 
-                              self.l_settings.max_stalled_objfun_impr
-                              * max(1.0, abs(self.fmin_cycle_start)))):
+                              self.l_settings.max_stalled_objfun_impr *
+                              max(1.0, abs(self.fmin_cycle_start)))):
                 self.num_stalled_cycles = 0
                 self.fmin_cycle_start = self.fmin
             else:
@@ -1765,7 +2029,13 @@ def local_step(settings, n, k, var_lower, var_upper, integer_vars, A, b,
                                       node_pos, rbf_lambda, rbf_h, A, b)
     # If the RBF cannot me minimized, or if the minimum is
     # larger than the node with smallest value, just take the
+    if min_rbf is None:
+        print('No solution found')
+    else:
+        print('min_rbf_val: {:f}'.format(min_rbf_val))
+        print('scaled_fmin: {:f}'.format(scaled_fmin))
     # node with the smallest value.
+
     if (min_rbf is None or
             (min_rbf_val >= scaled_fmin + settings.eps_zero)):
         min_rbf = node_pos[fmin_index]
@@ -1906,8 +2176,8 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
     assert(isinstance(var_lower, np.ndarray))
     assert(isinstance(var_upper, np.ndarray))
     assert(isinstance(integer_vars, np.ndarray))
-    assert(isinstance(A, np.ndarray))
-    assert(isinstance(b, np.ndarray))
+    assert(A is None or isinstance(A, np.ndarray))
+    assert(b is None or isinstance(b, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
     assert(isinstance(node_pos, np.ndarray))
@@ -1916,7 +2186,8 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
     assert(len(rbf_lambda) == k)
     assert(len(node_pos) == k)
     assert(0 <= fmin_index < k)
-    assert(isinstance(Amatinv, np.matrix))
+    assert((Amatinv is None and settings.algorithm == 'MSRSM') or
+           isinstance(Amatinv, np.matrix))
     assert(isinstance(settings, RbfSettings))
     assert(0 <= current_step <= settings.num_global_searches)
 
@@ -1952,7 +2223,7 @@ def global_step(settings, n, k, var_lower, var_upper, integer_vars,
     # where sigma_n is a function described in the paper by Gutmann
     # (2001). If clipping is disabled, we simply take the largest
     # function value.
-    if (settings.targetval_clipping):
+    if (settings.targetval_clipping and Amatinv is not None):
         local_fmax = ru.get_fmax_current_iter(settings, n, k,
                                               current_step, scaled_node_val)
     else:

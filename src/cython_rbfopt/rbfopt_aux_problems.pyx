@@ -26,6 +26,12 @@ import rbfopt_degree1_models
 import rbfopt_degree0_models
 from rbfopt_settings import RbfSettings
 import quasilhd
+try:
+    import cplex as cpx
+    cpx_available = True
+except ImportError:
+    cpx_available = False
+
 
 def pure_global_search(settings, n, k, var_lower, var_upper,
                        integer_vars, node_pos, mat):
@@ -150,7 +156,7 @@ def pure_global_search(settings, n, k, var_lower, var_upper,
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
         # Instantiate optimizer
         opt = pyomo.opt.SolverFactory(config.MINLP_SOLVER_NAME, 
-                                      executable = 
+                                      executable=
                                       config.MINLP_SOLVER_PATH,
                                       solver_io='nl')
         if opt is None:
@@ -174,7 +180,7 @@ def pure_global_search(settings, n, k, var_lower, var_upper,
         except:
             point = None     
     else:
-        raise ValueError('Global search method ' + settings.algorithm + 
+        raise ValueError('Global search method ' + settings.global_search_method +
                          ' not supported')
 
     return point
@@ -275,21 +281,24 @@ def minimize_rbf(settings, n, k, var_lower, var_upper, integer_vars,
                            'not found')
     set_minlp_solver_options(opt)
 
-    # Solve and load results
-    results = opt.solve(instance, keepfiles=False,
-                        tee=settings.print_solver_output)
-    if ((results.solver.status == pyomo.opt.SolverStatus.ok and
-        results.solver.termination_condition ==
-         pyomo.opt.TerminationCondition.optimal) or
-            (results.solver.status == pyomo.opt.SolverStatus.warning and
-                results.solver.termination_condition ==
-                pyomo.opt.TerminationCondition.maxIterations)):
-        # TODO: Check these conditions
-        # this is feasible and optimal or feasible (perhaps)
-        instance.solutions.load_from(results)
-        point = np.array([instance.x[i].value for i in instance.N])
-        ru.round_integer_vars(point, integer_vars)
-    else:
+    try:
+        # Solve and load results
+        results = opt.solve(instance, keepfiles=False,
+                            tee=settings.print_solver_output)
+        if ((results.solver.status == pyomo.opt.SolverStatus.ok and
+            results.solver.termination_condition ==
+             pyomo.opt.TerminationCondition.optimal) or
+                (results.solver.status == pyomo.opt.SolverStatus.warning and
+                    results.solver.termination_condition ==
+                    pyomo.opt.TerminationCondition.maxIterations)):
+            # TODO: Check these conditions
+            # this is feasible and optimal or feasible (perhaps)
+            instance.solutions.load_from(results)
+            point = np.array([instance.x[i].value for i in instance.N])
+            ru.round_integer_vars(point, integer_vars)
+        else:
+            point = None
+    except:
         point = None
 
     return point
@@ -386,8 +395,8 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
     assert(isinstance(var_lower, np.ndarray))
     assert(isinstance(var_upper, np.ndarray))
     assert(isinstance(integer_vars, np.ndarray))
-    assert(isinstance(A, np.ndarray))
-    assert(isinstance(b, np.ndarray))
+    assert(A is None or isinstance(A, np.ndarray))
+    assert(b is None or isinstance(b, np.ndarray))
     assert(isinstance(node_pos, np.ndarray))
     assert(isinstance(rbf_lambda, np.ndarray))
     assert(isinstance(rbf_h, np.ndarray))
@@ -401,7 +410,7 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
 
     # Determine the size of the P matrix
     p = ru.get_size_P_matrix(settings, n)
-    assert((mat is None and settings.algorithm == 'MSRSM' )
+    assert((mat is None and settings.algorithm == 'MSRSM')
            or (isinstance(mat, np.matrix) and mat.shape == (k + p, k + p)))
     assert(len(rbf_h)==p)
 
@@ -423,8 +432,10 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
                                     rbf_h, dist_weight, A, b)
         else:
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
-        point = ga_optimize2(settings, n, var_lower, var_upper,
-                            integer_vars, A, b, fitness.bulk_evaluate)
+        #point = ga_optimize2(settings, n, var_lower, var_upper,
+        #                    integer_vars, A, b, fitness.bulk_evaluate)
+        point = ga_optimize(settings, n, var_lower, var_upper,
+                             integer_vars, fitness.bulk_evaluate)
     elif (settings.global_search_method == 'sampling'):
         # Sample random points, and rank according to fitness
         if (settings.algorithm == 'Gutmann'):
@@ -435,13 +446,13 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
                                     rbf_h, dist_weight, A, b)
         else:
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
-        # num_samples = n * settings.num_samples_aux_problems
-        num_samples = n * 2
-        # samples = generate_sample_points(settings, n, var_lower, var_upper,
-        #                                  integer_vars, num_samples)
-        samples = quasilhd.find_feas_points_hr_binary_fast(num_samples, var_lower,
-                                                           var_upper, A, b,
-                                                           int_vars=integer_vars)
+        num_samples = n * settings.num_samples_aux_problems
+        #num_samples = n * 2
+        samples = generate_sample_points(settings, n, var_lower, var_upper,
+                                         integer_vars, num_samples)
+        #samples = quasilhd.find_feas_points_hr_binary_fast(num_samples, var_lower,
+        #                                                   var_upper, A, b,
+        #                                                   int_vars=integer_vars)
         scores = fitness.bulk_evaluate(samples)
         point = samples[scores.argmin()]
     elif (settings.global_search_method == 'solver'):
@@ -475,7 +486,7 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
             raise ValueError('Algorithm ' + settings.algorithm + ' not supported')
         # Instantiate optimizer
         opt = pyomo.opt.SolverFactory(config.MINLP_SOLVER_NAME, 
-                                      executable = config.MINLP_SOLVER_PATH,
+                                      executable=config.MINLP_SOLVER_PATH,
                                       solver_io='nl')
         if opt is None:
             raise RuntimeError('Solver ' + config.MINLP_SOLVER_NAME + 
@@ -498,12 +509,99 @@ def global_search(settings, n, k, var_lower, var_upper, integer_vars,
         except:
             point = None
     else:
-        raise ValueError('Global search method ' + settings.algorithm + 
+        raise ValueError('Global search method ' + settings.global_search_method +
                          ' not supported')
     if point is not None:
         point = np.array(point)
 
     return point
+
+# -- end function
+
+
+def get_rbf_coefficients_init(settings, n, k, Amat, node_val):
+    """Compute the coefficients of the RBF interpolant for the
+    initialization steps.
+
+    Solve a quadratic mixed integer program to find the coefficients
+    that minimize the bumpiness. This function is similar to
+    get_rbf_coefficients in rbfopt_utils. The difference is that here
+    the linear system has many solutions (k < n+1), and we select the
+    one that minimizes the bumpiness of the RBF interpolant.
+
+    Parameters
+    ----------
+    settings : :class:`rbfopt_settings.RbfSettings`.
+        Global and algorithmic settings.
+
+    n : int
+        Dimension of the problem, i.e. the size of the space.
+
+    k : int
+        Number of interpolation nodes.
+
+    Amat : numpy.matrix
+        Matrix [Phi P; P^T 0] defining the linear system. Must be a
+        square matrix of appropriate size.
+
+    node_val : 1D numpy.ndarray[float]
+        Numpy array of values of the function at the nodes.
+
+    Returns
+    -------
+    (1D numpy.ndarray[float], 1D numpy.ndarray[float])
+        Lambda coefficients (for the radial basis functions), and h
+        coefficients (for the polynomial).
+    """
+    assert(len(np.atleast_1d(node_val))==k)
+    assert(isinstance(settings, RbfSettings))
+    assert(isinstance(Amat, np.matrix))
+    assert(isinstance(node_val, np.ndarray))
+
+    p = ru.get_size_P_matrix(settings, n)
+    assert(Amat.shape == (k+p, k+p))
+
+    instance = rbfopt_degree1_models.create_min_bump_model_init(settings,
+                                                                n, k,
+                                                                Amat[:k, :k],
+                                                                Amat[:k, k:],
+                                                                node_val)
+    # Instantiate optimizer
+    opt = pyomo.opt.SolverFactory(config.MINLP_SOLVER_NAME,
+                                  executable=config.MINLP_SOLVER_PATH,
+                                  solver_io='nl')
+    if opt is None:
+        raise RuntimeError('Solver ' + config.MINLP_SOLVER_NAME + ' not found')
+    set_minlp_solver_options(opt)
+
+    # Solve and load results
+    try:
+        results = opt.solve(instance, keepfiles=False,
+                            tee=settings.print_solver_output)
+        if ((results.solver.status == pyomo.opt.SolverStatus.ok) and
+                (results.solver.termination_condition ==
+                     pyomo.opt.TerminationCondition.optimal)):
+            # this is feasible and optimal
+            instance.solutions.load_from(results)
+            rbf_lambda = np.array([instance.rbf_lambda[i].value for i in instance.K])
+            rbf_h = np.array([instance.rbf_h[i].value for i in instance.P])
+            for i in instance.P:
+                if rbf_h[i] is None:
+                    rbf_h[i] = 0
+        else:
+            # If we have initialization information, return it. It is
+            # a feasible solution. Otherwise, this will be None.
+            print('Warning 1')
+            rbf_lambda = None
+            rbf_h = None
+    except:
+        # If we have initialization information, return it. It is
+        # a feasible solution. Otherwise, this will be None.
+        print('Warning 2')
+        rbf_lambda = None
+        rbf_h = None
+
+    return (rbf_lambda, rbf_h)
 
 # -- end function
 
@@ -1123,7 +1221,7 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars,
         # Crossover: select how mating is done, then create offspring
         father = np.random.permutation(best_individuals)
         mother = np.random.permutation(best_individuals)
-        offspring = map(ga_mate, father, mother)
+        offspring = np.array(map(ga_mate, father, mother))
         # New individuals
         new_individuals = quasilhd.find_feas_points_hr_binary_fast(num_new, var_lower,
                                                                    var_upper, A, b,
@@ -1132,14 +1230,22 @@ def ga_optimize2(settings, n, var_lower, var_upper, integer_vars,
         best_mutated = best_individuals[0, :].copy()
         ga_mutate(n, var_lower, var_upper, is_integer,
                   best_mutated, max_size_pert)
-        # Mutate surviving (except best) if necessary
-        for point in best_individuals[1:]:
-            if (np.random.uniform() < curr_mutation_rate):
-                ga_mutate(n, var_lower, var_upper, is_integer,
-                          point, max_size_pert)
+        # # Mutate surviving (except best) if necessary
+        # for point in best_individuals[1:]:
+        #     if (np.random.uniform() < curr_mutation_rate):
+        #         ga_mutate(n, var_lower, var_upper, is_integer,
+        #                   point, max_size_pert)
         # Generate new population
         population = np.vstack((best_individuals, offspring, new_individuals,
                                 best_mutated))
+        # if gen == (settings.ga_num_generations-1):
+        #     ind1 = best_individuals.shape[0]
+        #     ind2 = ind1 + offspring.shape[0]
+        #     ind3 = ind2 + new_individuals.shape[0]
+        #     print(best_individuals.shape)
+        #     print(offspring.shape)
+        #     print(new_individuals.shape)
+        #     print(best_mutated.shape)
     # Determine ranking of last generation.
     # Compute fitness score to determine remaining individuals
     fitness_val = objfun(population)
